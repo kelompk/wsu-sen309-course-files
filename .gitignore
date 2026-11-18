@@ -1,0 +1,12 @@
+# WSU-SEN 309: never commit databases, captures you made yourself, or local settings
+*.db
+*.db-journal
+*.db-wal
+data/my_*.txt
+__pycache__/
+*.pyc
+.venv/
+.idea/
+.vscode/
+test/uno/build/
+test/uno/node_modules/

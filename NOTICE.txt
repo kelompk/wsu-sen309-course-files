@@ -1,0 +1,19 @@
+Copyright (c) 2026 A. S. Olayinka and S. A. Oyedotun. All rights reserved.
+
+The authors retain the copyright in the WSU-SEN 309 Practical Workbook and in everything in this
+repository, including text, figures, firmware, scripts, SQL and tests. No part of it may be
+reproduced, adapted, published or redistributed without the prior written permission of the
+authors, except:
+
+  - Students registered for WSU-SEN 309 at Wellspring University may use the course files and
+    code for their own study and course work.
+  - Instructors teaching WSU-SEN 309 at Wellspring University may use and reproduce them for
+    that course.
+
+Permissions: solayinkaa@gmail.com
+
+AI usage declaration: Claude (Anthropic) was used to assist with drafting code, tests and text.
+The authors direct this work and are responsible for reviewing, testing and editing all
+AI-assisted content. The firmware was compiled for the Arduino Uno and run in an ATmega328P
+simulator; the Python fixture, ingest and tests were run on Python 3.13 with SQLite 3.5x.
+The Wokwi project must be opened once in Wokwi before first use.
