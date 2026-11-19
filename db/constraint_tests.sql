@@ -57,3 +57,9 @@ DELETE FROM device WHERE device_id = 'SN01';
 
 -- T16 Change the light value of a stored reading
 UPDATE reading SET light = 0 WHERE session_id = 1 AND seq = 0;
+-- T17 Deleting a boot session cascades to delete its readings
+DELETE FROM boot_session WHERE session_id = 1;
+
+-- T18 A rejected_line row with an invalid reason code
+INSERT INTO ingest_run (run_id, source) VALUES (1, 'test.txt');
+INSERT INTO rejected_line (run_id, line_no, raw, reason) VALUES (1, 1, 'bad', 'BAD_DATA');

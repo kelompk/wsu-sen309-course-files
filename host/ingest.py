@@ -7,11 +7,11 @@
     python -m host.ingest --db data/sen309.db --source serial://COM3        (a real board; needs pyserial)
 
 Rules (the interface contract, workbook Appendix):
-  * Every line is either stored, counted as a duplicate, or written to rejected_line with a reason.
-  * A reading is identified by (device, boot, seq). Storing the same reading twice changes nothing,
+- Every line is either stored, counted as a duplicate, or written to rejected_line with a reason.
+- A reading is identified by (device, boot, seq). Storing the same reading twice changes nothing,
     so a transfer can always be repeated safely (the ingest is idempotent).
-  * The same key with different values is a CONFLICT: the first stored copy is kept.
-  * Work is committed in batches. A crash loses at most the current batch, never half of one,
+- The same key with different values is a CONFLICT: the first stored copy is kept.
+- Work is committed in batches. A crash loses at most the current batch, never half of one,
     and the run stays marked RUNNING so the crash can be seen afterwards.
 
 (c) 2026 Wellspring University, Faculty of Computing. For registered WSU-SEN 309 students.
@@ -116,12 +116,20 @@ def store_reading(con, run_id, r):
     """Store one reading. Returns 'inserted' or 'duplicate'; raises ParseError('CONFLICT') if the
     same reading is already stored with different values."""
     sid = session_for(con, r.device, r.boot)
-    # TODO A4: insert the reading with run_id, using ? placeholders (never build SQL with f-strings).
-    #   Add  ON CONFLICT (session_id, seq) DO NOTHING  so a second copy is not an error.
-    #   If cur.rowcount == 1 the row is new: return "inserted".
-    #   Otherwise read the stored row's (t_ms, temp_c, light, state). If it equals the new one,
-    #   return "duplicate"; if not, raise ParseError("CONFLICT", "...") and keep the first copy.
-    raise NotImplementedError("TODO A4: store_reading")
+    cur = con.execute(
+        "INSERT INTO reading (session_id, seq, t_ms, temp_c, light, state, run_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (session_id, seq) DO NOTHING",
+        (sid, r.seq, r.t_ms, r.temp_c, r.light, r.state, run_id),
+    )
+    if cur.rowcount == 1:
+        return "inserted"
+    existing = con.execute(
+        "SELECT t_ms, temp_c, light, state FROM reading WHERE session_id = ? AND seq = ?",
+        (sid, r.seq),
+    ).fetchone()
+    if existing == (r.t_ms, r.temp_c, r.light, r.state):
+        return "duplicate"
+    raise ParseError("CONFLICT", f"seq {r.seq} already stored with different values")
 
 
 def next_seq(con, device, boot):
@@ -175,10 +183,10 @@ class Ingest:
                 self.log(f"  device reports {rec.code} {rec.detail}")
         except ParseError as e:
             self.reject(line_no, raw, e.reason, e.detail)
-        except sqlite3.IntegrityError as e:          # the schema caught something the parser let through
-            self.reject(line_no, raw, "RANGE", f"database refused it: {e}")
             if e.reason == "TRUNCATED":
                 self.cut = True
+        except sqlite3.IntegrityError as e:          # the schema caught something the parser let through
+            self.reject(line_no, raw, "RANGE", f"database refused it: {e}")
         self.in_batch += 1
         if self.in_batch >= self.batch:
             self.commit()

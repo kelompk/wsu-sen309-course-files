@@ -18,11 +18,16 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# TODO B1: write a query that returns one row (gap_from, gap_to) for every run of missing seq
-#   numbers INSIDE one session (the ? is the session_id). Hint: the window function
-#   LAG(seq) OVER (ORDER BY seq) gives the previous stored seq; a gap is where seq - prev > 1.
 GAPS_SQL = """
-SELECT NULL AS gap_from, NULL AS gap_to WHERE 0 AND ? IS NOT NULL
+WITH ordered AS (
+    SELECT seq, LAG(seq) OVER (ORDER BY seq) AS prev
+    FROM reading
+    WHERE session_id = ?
+)
+SELECT prev + 1 AS gap_from, seq - 1 AS gap_to
+FROM ordered
+WHERE prev IS NOT NULL AND seq - prev > 1
+ORDER BY gap_from
 """
 
 

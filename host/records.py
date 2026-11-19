@@ -105,12 +105,15 @@ def parse_line(text):
     if len(line) < 2 or line[0] not in FIELD_COUNTS or line[1] != ",":
         raise ParseError("FORMAT", "not a record")
     # ... and ends with '*' and exactly two hex digits.
-    # TODO A1: split the line at its LAST '*' into body and ck. If there is no '*', or ck is not
-    #   exactly two hex digits (upper or lower case), raise ParseError("TRUNCATED", "...").
-    body, ck = line, ""
+    if "*" not in line:
+        raise ParseError("TRUNCATED", "missing '*CK' checksum ending")
+    body, ck = line.rsplit("*", 1)
+    if not re.fullmatch(r"[0-9A-Fa-f]{2}", ck):
+        raise ParseError("TRUNCATED", f"incomplete checksum {ck!r}")
 
     # 2. Integrity: the checksum must match the body.
-    # TODO A2: if checksum(body) is not equal to int(ck, 16), raise ParseError("CHECKSUM", "...").
+    if checksum(body) != int(ck, 16):
+        raise ParseError("CHECKSUM", f"checksum mismatch: got {ck!r}, expected {checksum(body):02X}")
 
     # 3. Structure: the right number of fields for the type, and a valid device id and boot number.
     f = body.split(",")
@@ -124,12 +127,18 @@ def parse_line(text):
 
     # 4. Content: convert each field and check its domain.
     if kind == "R":
-        # TODO A3: convert the reading's fields and check each one, then return a Reading.
-        #   seq and t_ms:  whole numbers (use _int), both >= 0
-        #   temp_c:        must match TEMP_RE (else FORMAT), then TEMP_MIN <= temp <= TEMP_MAX (else RANGE)
-        #   light:         whole number, LIGHT_MIN..LIGHT_MAX          state: one of STATES
-        #   Use _check(condition, name, value) for every RANGE test. Look at the H branch below.
-        raise NotImplementedError("TODO A3: parse an R line")
+        seq = _int(f[3], "seq")
+        _check(seq >= 0, "seq", seq)
+        t_ms = _int(f[4], "t_ms")
+        _check(t_ms >= 0, "t_ms", t_ms)
+        if not TEMP_RE.fullmatch(f[5]):
+            raise ParseError("FORMAT", f"temp_c is not a valid decimal: {f[5]!r}")
+        temp_c = float(f[5])
+        _check(TEMP_MIN <= temp_c <= TEMP_MAX, "temp_c", temp_c)
+        light = _int(f[6], "light")
+        _check(LIGHT_MIN <= light <= LIGHT_MAX, "light", light)
+        _check(f[7] in STATES, "state", f[7])
+        return Reading(device, boot, seq, t_ms, temp_c, light, f[7])
     if kind == "H":
         period = _int(f[4], "period_ms")
         _check(PERIOD_MIN <= period <= PERIOD_MAX, "period_ms", period)

@@ -1,5 +1,5 @@
 -- WSU-SEN 309 Embedded Software and Data Systems Lab
--- Practical 2  |  Storage entities, keys and integrity constraints (STARTER: complete the TODOs)
+-- Practical 2  |  Storage entities, keys and integrity constraints
 -- (c) 2026 Wellspring University, Faculty of Computing. For registered WSU-SEN 309 students.
 --
 -- Load with:  python tools/sql.py data/sen309.db db/schema.sql
@@ -17,33 +17,30 @@ CREATE TABLE device (
 
 -- One power-up of a device. The device numbers its readings from 0 after every boot,
 -- so a reading is identified by (device, boot, seq), here (session_id, seq).
--- TODO P2-A1: add the constraints marked below. Run python tools/check_constraints.py db/schema.sql
+-- TODO P2-A1:
 CREATE TABLE boot_session (
     session_id         INTEGER PRIMARY KEY,
-    device_id          TEXT    NOT NULL,          -- TODO: must refer to a registered device; refuse to delete that device
-    boot               INTEGER NOT NULL,          -- TODO: a whole number, 0 or more
-    fw                 TEXT,                      -- NULL if the H line was never received
-    period_ms          INTEGER,                   -- TODO: NULL, or between 200 and 60000
-    reported_count     INTEGER CHECK (reported_count IS NULL OR reported_count >= 0),   -- from the E line
+    device_id          TEXT    NOT NULL REFERENCES device (device_id) ON DELETE RESTRICT,
+    boot               INTEGER NOT NULL CHECK (typeof(boot) = 'integer' AND boot >= 0),
+    fw                 TEXT,
+    period_ms          INTEGER CHECK (period_ms IS NULL OR (typeof(period_ms) = 'integer' AND period_ms BETWEEN 200 AND 60000)),
+    reported_count     INTEGER CHECK (reported_count IS NULL OR reported_count >= 0),
     reported_last_seq  INTEGER CHECK (reported_last_seq IS NULL OR reported_last_seq >= -1),
-    first_seen         TEXT    NOT NULL DEFAULT (datetime('now'))
-    -- TODO: one session per (device_id, boot)
+    first_seen         TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (device_id, boot)
 );
 
 -- One reading.
--- TODO P2-A2: choose the primary key and write every constraint the readings need:
---   a reading belongs to an existing session (deleting a session deletes its readings);
---   seq and t_ms are whole numbers, 0 or more; temp_c is a real number from -40.0 to 125.0;
---   light is a whole number from 0 to 1023; state is RUN or ALM; no value may be missing.
---   SQLite stores whatever type it is given unless you check typeof(column) yourself.
+-- TODO P2-A2:
 CREATE TABLE reading (
-    session_id   INTEGER,
-    seq          INTEGER,
-    t_ms         INTEGER,
-    temp_c       REAL,
-    light        INTEGER,
-    state        TEXT,
-    run_id       INTEGER REFERENCES ingest_run (run_id)
+    session_id   INTEGER NOT NULL REFERENCES boot_session (session_id) ON DELETE CASCADE,
+    seq          INTEGER NOT NULL CHECK (typeof(seq) = 'integer' AND seq >= 0),
+    t_ms         INTEGER NOT NULL CHECK (typeof(t_ms) = 'integer' AND t_ms >= 0),
+    temp_c       REAL    NOT NULL CHECK (typeof(temp_c) = 'real' AND temp_c BETWEEN -40.0 AND 125.0),
+    light        INTEGER NOT NULL CHECK (typeof(light) = 'integer' AND light BETWEEN 0 AND 1023),
+    state        TEXT    NOT NULL CHECK (state IN ('RUN', 'ALM')),
+    run_id       INTEGER REFERENCES ingest_run (run_id),
+    PRIMARY KEY (session_id, seq)
 );
 
 -- One execution of the ingest program, so every stored or rejected line can be traced to a run.
@@ -71,10 +68,26 @@ CREATE TABLE rejected_line (
 
 CREATE INDEX idx_rejected_run ON rejected_line (run_id, reason);
 
--- TODO P2-B1 (extension): a trigger named reading_is_append_only that refuses every UPDATE on reading
---   with the message 'readings are append-only'.
+-- TODO P2-B1 (extension):
+CREATE TRIGGER reading_is_append_only
+BEFORE UPDATE ON reading
+BEGIN
+    SELECT RAISE(ABORT, 'readings are append-only');
+END;
 
--- TODO P2-B2 (extension): a view named v_session_summary with one row per boot session:
---   session_id, device_id, boot, stored (number of readings), first_seq, last_seq,
---   span (last_seq - first_seq + 1, or 0), missing_inside (span - stored), reported_count, reported_last_seq.
---   Sessions with no readings must still appear (use a LEFT JOIN).
+-- TODO P2-B2 (extension):
+CREATE VIEW v_session_summary AS
+SELECT
+    bs.session_id,
+    bs.device_id,
+    bs.boot,
+    COUNT(r.seq) AS stored,
+    MIN(r.seq) AS first_seq,
+    MAX(r.seq) AS last_seq,
+    COALESCE(MAX(r.seq) - MIN(r.seq) + 1, 0) AS span,
+    COALESCE(MAX(r.seq) - MIN(r.seq) + 1, 0) - COUNT(r.seq) AS missing_inside,
+    bs.reported_count,
+    bs.reported_last_seq
+FROM boot_session bs
+LEFT JOIN reading r ON r.session_id = bs.session_id
+GROUP BY bs.session_id, bs.device_id, bs.boot, bs.reported_count, bs.reported_last_seq;
